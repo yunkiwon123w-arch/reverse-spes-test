@@ -1,21 +1,13 @@
 """
 Reverse SPES - RS3 Strategy Integration
+강의 원문 기준
 
-현재까지 구현한 강의 원문 기반 모듈을 연결한다.
-
-연결 모듈
-1. Fibonacci RS20
-2. M Indicator
-3. RS3 Entry
-4. RS3 Exclusion
-5. RS3 Exit
-
-주의
-- 새로운 매매조건을 임의로 추가하지 않는다.
-- 원문에서 수치가 확정되지 않은 조건은 외부 판정값을 사용한다.
+중요
+- RS20과 RS3는 별도 전략이다.
+- RS3 진입에 RS20 피보나치 38선 조건을 강제하지 않는다.
+- RS3의 M지표 200억 이상은 필수조건이 아니라 '확률 UP' 요소다.
 """
 
-from fibonacci import check_fibonacci_rs20
 from m_indicator import calculate_m_indicator
 from rs3_entry import check_rs3_entry
 from rs3_exclusion import check_rs3_exclusion
@@ -23,15 +15,14 @@ from rs3_exit import check_rs3_exit
 
 
 def check_rs3_candidate(
-    fib_line,
-    m_value,
-    m_ratio,
-    first_touch,
     open_price,
     day_high,
     traded_value_eok,
     current_time,
     is_force_stock,
+
+    m_value=None,
+
     is_new_listing=False,
     touched_50_before_1430=False,
     strong_rebound_near_50=False,
@@ -40,38 +31,10 @@ def check_rs3_candidate(
 ):
     """
     RS3 신규 매수 후보 통합 판정
-
-    Returns
-    -------
-    tuple
-        (candidate, result)
-
-        candidate : bool
-            최종 매수후보 여부
-
-        result : dict
-            각 조건별 판정 결과
     """
 
     # ---------------------------------
-    # 1. Fibonacci RS20
-    # ---------------------------------
-    fibonacci_ok = check_fibonacci_rs20(
-        fib_line=fib_line,
-        m_value=m_value,
-        m_ratio=m_ratio,
-        first_touch=first_touch
-    )
-
-    if not fibonacci_ok:
-        return False, {
-            "candidate": False,
-            "stage": "fibonacci_rs20",
-            "reason": "fibonacci_condition_failed"
-        }
-
-    # ---------------------------------
-    # 2. RS3 기본 매수조건
+    # 1. RS3 기본 매수조건
     # ---------------------------------
     entry_ok = check_rs3_entry(
         open_price=open_price,
@@ -89,7 +52,7 @@ def check_rs3_candidate(
         }
 
     # ---------------------------------
-    # 3. RS3 제외조건
+    # 2. RS3 제외조건
     # ---------------------------------
     excluded, exclusion_reasons = check_rs3_exclusion(
         is_new_listing=is_new_listing,
@@ -108,12 +71,22 @@ def check_rs3_candidate(
         }
 
     # ---------------------------------
-    # 모든 진입조건 통과
+    # 3. M지표 확률 UP
+    # 필수조건 아님
+    # ---------------------------------
+    m_indicator_bonus = (
+        m_value is not None
+        and m_value >= 200
+    )
+
+    # ---------------------------------
+    # 최종 후보
     # ---------------------------------
     return True, {
         "candidate": True,
         "stage": "passed",
-        "reason": "all_entry_conditions_passed"
+        "reason": "all_required_conditions_passed",
+        "m_indicator_200_bonus": m_indicator_bonus
     }
 
 
@@ -144,9 +117,7 @@ def check_rs3_position_exit(
 
 def prepare_m_indicator(df):
     """
-    원시 OHLCV 데이터에 M지표를 계산한다.
-
-    실제 데이터 로딩/백테스트 단계에서 사용한다.
+    원시 OHLCV 데이터에 M지표 계산
     """
 
     return calculate_m_indicator(df)
