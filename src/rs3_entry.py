@@ -4,18 +4,22 @@ Reverse SPES - RS3 Entry Conditions
 
 매수조건
 - 세력 / 수급세력주
-- 시가 대비 상승률 20% 이상
+- 시가 대비 당일 고가 상승률 20% 이상
 - 거래대금 최소 500억원 이상
 - 오후 2시 30분 이후
-"""
 
+중요
+강의의 RS3 조건검색식 및 수식은
+현재가가 아니라 dayhigh(), 즉 당일 고가가
+시가 대비 20% 이상 상승했는지를 기준으로 한다.
+"""
 
 from datetime import time
 
 
 def check_rs3_entry(
     open_price,
-    current_price,
+    day_high,
     traded_value_eok,
     current_time,
     is_force_stock=True
@@ -28,8 +32,8 @@ def check_rs3_entry(
     open_price : float
         당일 시가
 
-    current_price : float
-        현재가
+    day_high : float
+        당일 고가
 
     traded_value_eok : float
         거래대금 (억원)
@@ -46,7 +50,7 @@ def check_rs3_entry(
         모든 조건 충족 시 True
     """
 
-    # 세력 / 수급세력주 조건
+    # 1. 세력 / 수급세력주
     if not is_force_stock:
         return False
 
@@ -54,21 +58,21 @@ def check_rs3_entry(
     if open_price <= 0:
         return False
 
-    # 시가 대비 상승률
+    # 2. 시가 대비 당일 고가 상승률
     rise_rate = (
-        (current_price - open_price)
+        (day_high - open_price)
         / open_price
     )
 
-    # 시가 대비 +20% 이상
+    # 시가 대비 당일 고가 +20% 이상
     if rise_rate < 0.20:
         return False
 
-    # 거래대금 500억원 이상
+    # 3. 거래대금 500억원 이상
     if traded_value_eok < 500:
         return False
 
-    # 오후 2시 30분 이후
+    # 4. 오후 2시 30분 이후
     if current_time < time(14, 30):
         return False
 
