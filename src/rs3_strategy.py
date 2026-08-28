@@ -1,249 +1,112 @@
 """
-Reverse SPES - RS3 Strategy Integration Test
-강의 원문 기준 RS3 독립전략 연결 테스트
+Reverse SPES - RS3 Strategy Integration
+강의 원문 기준
 
-확인 항목
-1. 정상 매수후보
-2. 시가 대비 당일 고가 +20% 미달
-3. 거래대금 500억원 미달
-4. 14:30 이전
-5. 제외조건 작동
-6. M지표 200억 이상 보너스
-7. M지표 200억 미만이어도 필수조건 통과
-8. +4% 익절
-9. 피보나치 70선 손절
-10. 2일 기간손절
-11. HOLD
+중요
+- RS20과 RS3는 별도 전략이다.
+- RS3 진입에 RS20 피보나치 38선 조건을 강제하지 않는다.
+- RS3의 M지표 200억 이상은 필수조건이 아니라 '확률 UP' 요소다.
 """
 
-from datetime import time
-
-from rs3_strategy import (
-    check_rs3_candidate,
-    check_rs3_position_exit,
-)
+from m_indicator import calculate_m_indicator
+from rs3_entry import check_rs3_entry
+from rs3_exclusion import check_rs3_exclusion
+from rs3_exit import check_rs3_exit
 
 
-def run_tests():
+def check_rs3_candidate(
+    open_price,
+    day_high,
+    traded_value_eok,
+    current_time,
+    is_force_stock,
+    m_value=None,
+    is_new_listing=False,
+    touched_50_before_1430=False,
+    strong_rebound_near_50=False,
+    is_tusang_or_higher=False,
+    short_term_overheat_today=False
+):
+    """
+    RS3 신규 매수 후보 통합 판정
+    """
 
-    print("===== Reverse SPES RS3 TEST START =====")
-
-    # --------------------------------------------------
-    # TEST 1
-    # 정상 매수후보
-    # --------------------------------------------------
-    candidate, result = check_rs3_candidate(
-        open_price=10000,
-        day_high=12500,
-        traded_value_eok=600,
-        current_time=time(14, 40),
-        is_force_stock=True,
-        m_value=250,
-
-        is_new_listing=False,
-        touched_50_before_1430=False,
-        strong_rebound_near_50=False,
-        is_tusang_or_higher=False,
-        short_term_overheat_today=False
+    # 1. RS3 기본 매수조건
+    entry_ok = check_rs3_entry(
+        open_price=open_price,
+        day_high=day_high,
+        traded_value_eok=traded_value_eok,
+        current_time=current_time,
+        is_force_stock=is_force_stock
     )
 
-    assert candidate is True
-    assert result["m_indicator_200_bonus"] is True
+    if not entry_ok:
+        return False, {
+            "candidate": False,
+            "stage": "rs3_entry",
+            "reason": "entry_condition_failed"
+        }
 
-    print("TEST 1 PASS - 정상 매수후보")
-
-
-    # --------------------------------------------------
-    # TEST 2
-    # 당일 고가 +20% 미달
-    # --------------------------------------------------
-    candidate, result = check_rs3_candidate(
-        open_price=10000,
-        day_high=11900,
-        traded_value_eok=600,
-        current_time=time(14, 40),
-        is_force_stock=True,
-        m_value=250
+    # 2. RS3 제외조건
+    excluded, exclusion_reasons = check_rs3_exclusion(
+        is_new_listing=is_new_listing,
+        touched_50_before_1430=touched_50_before_1430,
+        strong_rebound_near_50=strong_rebound_near_50,
+        is_tusang_or_higher=is_tusang_or_higher,
+        short_term_overheat_today=short_term_overheat_today
     )
 
-    assert candidate is False
-    assert result["stage"] == "rs3_entry"
+    if excluded:
+        return False, {
+            "candidate": False,
+            "stage": "rs3_exclusion",
+            "reason": "excluded",
+            "exclusion_reasons": exclusion_reasons
+        }
 
-    print("TEST 2 PASS - +20% 미달 탈락")
-
-
-    # --------------------------------------------------
-    # TEST 3
-    # 거래대금 500억원 미달
-    # --------------------------------------------------
-    candidate, result = check_rs3_candidate(
-        open_price=10000,
-        day_high=12500,
-        traded_value_eok=499,
-        current_time=time(14, 40),
-        is_force_stock=True,
-        m_value=250
+    # 3. M지표 200억 이상 = 확률 UP
+    # 필수 매수조건은 아님
+    m_indicator_bonus = (
+        m_value is not None
+        and m_value >= 200
     )
 
-    assert candidate is False
-    assert result["stage"] == "rs3_entry"
+    return True, {
+        "candidate": True,
+        "stage": "passed",
+        "reason": "all_required_conditions_passed",
+        "m_indicator_200_bonus": m_indicator_bonus
+    }
 
-    print("TEST 3 PASS - 거래대금 미달 탈락")
 
+def check_rs3_position_exit(
+    buy_price,
+    current_price,
+    fibonacci_70_touched=False,
+    holding_days=0,
+    rebound_within_2days=True
+):
+    """
+    RS3 보유 종목 청산 판정
+    """
 
-    # --------------------------------------------------
-    # TEST 4
-    # 오후 2시 30분 이전
-    # --------------------------------------------------
-    candidate, result = check_rs3_candidate(
-        open_price=10000,
-        day_high=12500,
-        traded_value_eok=600,
-        current_time=time(14, 29),
-        is_force_stock=True,
-        m_value=250
+    exit_signal, reason = check_rs3_exit(
+        buy_price=buy_price,
+        current_price=current_price,
+        fibonacci_70_touched=fibonacci_70_touched,
+        holding_days=holding_days,
+        rebound_within_2days=rebound_within_2days
     )
 
-    assert candidate is False
-    assert result["stage"] == "rs3_entry"
-
-    print("TEST 4 PASS - 14:30 이전 탈락")
-
-
-    # --------------------------------------------------
-    # TEST 5
-    # 제외조건 작동
-    # 신규상장 종목
-    # --------------------------------------------------
-    candidate, result = check_rs3_candidate(
-        open_price=10000,
-        day_high=12500,
-        traded_value_eok=600,
-        current_time=time(14, 40),
-        is_force_stock=True,
-        m_value=250,
-        is_new_listing=True
-    )
-
-    assert candidate is False
-    assert result["stage"] == "rs3_exclusion"
-
-    print("TEST 5 PASS - 제외조건 작동")
+    return {
+        "exit": exit_signal,
+        "reason": reason
+    }
 
 
-    # --------------------------------------------------
-    # TEST 6
-    # M지표 200억원 이상
-    # 확률 UP 표시
-    # --------------------------------------------------
-    candidate, result = check_rs3_candidate(
-        open_price=10000,
-        day_high=12500,
-        traded_value_eok=600,
-        current_time=time(14, 40),
-        is_force_stock=True,
-        m_value=200
-    )
+def prepare_m_indicator(df):
+    """
+    OHLCV 데이터에 강의 원문 M지표 계산
+    """
 
-    assert candidate is True
-    assert result["m_indicator_200_bonus"] is True
-
-    print("TEST 6 PASS - M지표 200억 확률 UP")
-
-
-    # --------------------------------------------------
-    # TEST 7
-    # M지표 200억 미만
-    # RS3 필수조건은 아니므로 후보 유지
-    # --------------------------------------------------
-    candidate, result = check_rs3_candidate(
-        open_price=10000,
-        day_high=12500,
-        traded_value_eok=600,
-        current_time=time(14, 40),
-        is_force_stock=True,
-        m_value=150
-    )
-
-    assert candidate is True
-    assert result["m_indicator_200_bonus"] is False
-
-    print("TEST 7 PASS - M지표 미달이어도 RS3 후보 유지")
-
-
-    # --------------------------------------------------
-    # TEST 8
-    # +4% 익절
-    # --------------------------------------------------
-    result = check_rs3_position_exit(
-        buy_price=10000,
-        current_price=10400,
-        fibonacci_70_touched=False,
-        holding_days=0,
-        rebound_within_2days=True
-    )
-
-    assert result["exit"] is True
-    assert result["reason"] == "profit_target_4pct"
-
-    print("TEST 8 PASS - +4% 익절")
-
-
-    # --------------------------------------------------
-    # TEST 9
-    # 피보나치 70선 손절
-    # --------------------------------------------------
-    result = check_rs3_position_exit(
-        buy_price=10000,
-        current_price=9800,
-        fibonacci_70_touched=True,
-        holding_days=0,
-        rebound_within_2days=True
-    )
-
-    assert result["exit"] is True
-    assert result["reason"] == "fibonacci_70_stop"
-
-    print("TEST 9 PASS - 피보나치 70선 손절")
-
-
-    # --------------------------------------------------
-    # TEST 10
-    # 2일 기간손절
-    # --------------------------------------------------
-    result = check_rs3_position_exit(
-        buy_price=10000,
-        current_price=9900,
-        fibonacci_70_touched=False,
-        holding_days=2,
-        rebound_within_2days=False
-    )
-
-    assert result["exit"] is True
-    assert result["reason"] == "two_day_time_stop"
-
-    print("TEST 10 PASS - 2일 기간손절")
-
-
-    # --------------------------------------------------
-    # TEST 11
-    # HOLD
-    # --------------------------------------------------
-    result = check_rs3_position_exit(
-        buy_price=10000,
-        current_price=10100,
-        fibonacci_70_touched=False,
-        holding_days=1,
-        rebound_within_2days=True
-    )
-
-    assert result["exit"] is False
-    assert result["reason"] == "hold"
-
-    print("TEST 11 PASS - HOLD")
-
-    print("===== ALL RS3 TESTS PASS =====")
-
-
-if __name__ == "__main__":
-    run_tests()
+    return calculate_m_indicator(df)
