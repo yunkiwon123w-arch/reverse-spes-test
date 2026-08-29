@@ -1,12 +1,12 @@
-import os
+import getpass
 import requests
 
-APP_KEY = os.environ.get("KIWOOM_APP_KEY")
-SECRET_KEY = os.environ.get("KIWOOM_SECRET_KEY")
+print("=" * 50)
+print("키움 REST API 인증 테스트")
+print("=" * 50)
 
-if not APP_KEY or not SECRET_KEY:
-    print("ERROR: App Key / Secret Key 환경변수가 없습니다.")
-    raise SystemExit(1)
+app_key = getpass.getpass("App Key 입력: ")
+secret_key = getpass.getpass("Secret Key 입력: ")
 
 url = "https://api.kiwoom.com/oauth2/token"
 
@@ -16,8 +16,8 @@ headers = {
 
 payload = {
     "grant_type": "client_credentials",
-    "appkey": APP_KEY,
-    "secretkey": SECRET_KEY
+    "appkey": app_key,
+    "secretkey": secret_key
 }
 
 try:
@@ -28,18 +28,25 @@ try:
         timeout=20
     )
 
-    print("HTTP STATUS:", response.status_code)
+    print()
+    print("HTTP STATUS :", response.status_code)
 
     data = response.json()
 
-    print("RETURN CODE:", data.get("return_code"))
-    print("RETURN MSG :", data.get("return_msg"))
-    print("EXPIRES    :", data.get("expires_dt"))
+    print("RETURN CODE :", data.get("return_code"))
+    print("RETURN MSG  :", data.get("return_msg"))
+    print("EXPIRES     :", data.get("expires_dt"))
 
     if data.get("token"):
-        print("TOKEN      : 발급 성공")
+        print()
+        print("✅ TOKEN 발급 성공")
     else:
-        print("TOKEN      : 발급 실패")
+        print()
+        print("❌ TOKEN 발급 실패")
 
 except Exception as e:
-    print("ERROR:", type(e).__name__, str(e))
+    print()
+    print("❌ 오류 발생:", type(e).__name__, str(e))
+
+print()
+input("Enter를 누르면 종료합니다...")
