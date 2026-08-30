@@ -9,10 +9,7 @@ BASE_URL = "https://api.kiwoom.com"
 
 INPUT_FILE = "rs3_candidates_minute_period.csv"
 
-# 너무 많은 연속조회 방지
 MAX_PAGES = 20
-
-# API 호출 간격
 REQUEST_INTERVAL = 0.30
 
 
@@ -196,7 +193,6 @@ def load_target_day_minutes(
             f"목표일 분봉 누적 {len(all_rows)}개"
         )
 
-        # 목표 날짜보다 더 과거까지 내려갔으면 종료
         if oldest_date and oldest_date < target_date:
             break
 
@@ -260,7 +256,6 @@ def analyze_rs3_day(
             "low": low
         })
 
-    # 오래된 시각 → 최신 시각
     bars.sort(
         key=lambda x: x["time"]
     )
@@ -272,11 +267,16 @@ def analyze_rs3_day(
     running_low = None
 
     trigger_time = None
-    trigger_high = None
-    trigger_low = None
+
+    # +20% 최초 발생 순간에 고정할 값
+    fixed_high = None
+    fixed_low = None
+
+    fib50 = None
+    fib618 = None
+    fib70 = None
 
     before_1430_touch_50 = False
-
     first_after_1430_touch = None
 
     diagnostic_rows = []
@@ -310,34 +310,41 @@ def analyze_rs3_day(
             / daily_open
         )
 
-        # +20% 최초 발생 시점
+        # +20% 최초 발생 순간
         if (
             trigger_time is None
             and rise_rate >= 0.20
         ):
             trigger_time = tm
-            trigger_high = running_high
-            trigger_low = running_low
+
+            # 이 순간의 A, B 고정
+            fixed_high = running_high
+            fixed_low = running_low
+
+            diff = (
+                fixed_high
+                - fixed_low
+            )
+
+            fib50 = (
+                fixed_high
+                - diff * 0.5
+            )
+
+            fib618 = (
+                fixed_high
+                - diff * 0.618
+            )
+
+            fib70 = (
+                fixed_high
+                - diff * 0.7
+            )
 
         if trigger_time is None:
             continue
 
-        # 현재 시점까지 형성된 당일 고가/저가 기준
-        fib50 = (
-            running_high
-            - (running_high - running_low) * 0.5
-        )
-
-        fib618 = (
-            running_high
-            - (running_high - running_low) * 0.618
-        )
-
-        fib70 = (
-            running_high
-            - (running_high - running_low) * 0.7
-        )
-
+        # 고정된 피보나치 가격 사용
         touched_50 = (
             low <= fib50 <= high
         )
@@ -354,12 +361,9 @@ def analyze_rs3_day(
                 "time": tm,
                 "fib50": fib50,
                 "fib618": fib618,
-                "fib70": fib70,
-                "running_high": running_high,
-                "running_low": running_low
+                "fib70": fib70
             }
 
-        # 화면 확인용 주요 시점 저장
         if (
             hhmm in (
                 "1400",
@@ -370,8 +374,6 @@ def analyze_rs3_day(
         ):
             diagnostic_rows.append({
                 "time": tm,
-                "running_high": running_high,
-                "running_low": running_low,
                 "fib50": fib50,
                 "fib618": fib618,
                 "fib70": fib70
@@ -380,8 +382,11 @@ def analyze_rs3_day(
     return {
         "bars": bars,
         "trigger_time": trigger_time,
-        "trigger_high": trigger_high,
-        "trigger_low": trigger_low,
+        "fixed_high": fixed_high,
+        "fixed_low": fixed_low,
+        "fib50": fib50,
+        "fib618": fib618,
+        "fib70": fib70,
         "before_1430_touch_50": before_1430_touch_50,
         "first_after_1430_touch": first_after_1430_touch,
         "diagnostic_rows": diagnostic_rows
@@ -390,6 +395,7 @@ def analyze_rs3_day(
 
 print("=" * 70)
 print("Reverse SPES RS3 - 1분봉 진입 진단")
+print("피보나치 A/B : +20% 최초 발생 시점 고정")
 print("=" * 70)
 
 try:
@@ -502,21 +508,49 @@ try:
         ]
 
         if trigger_time:
+
             print(
                 "+20% 최초 발생 :",
                 trigger_time
             )
 
             print(
-                "발생 당시 고가 :",
-                result["trigger_high"]
+                "고정 A(고가) :",
+                result["fixed_high"]
             )
 
             print(
-                "발생 당시 저가 :",
-                result["trigger_low"]
+                "고정 B(저가) :",
+                result["fixed_low"]
             )
+
+            print()
+            print(
+                "고정 50선 :",
+                round(
+                    result["fib50"],
+                    2
+                )
+            )
+
+            print(
+                "고정 61.8선 :",
+                round(
+                    result["fib618"],
+                    2
+                )
+            )
+
+            print(
+                "고정 70선 :",
+                round(
+                    result["fib70"],
+                    2
+                )
+            )
+
         else:
+
             print(
                 "❌ 분봉상 +20% 발생을 찾지 못했습니다."
             )
@@ -537,66 +571,20 @@ try:
 
         if after_touch:
 
-            print()
             print(
                 "14:30 이후 첫 50선 터치 :",
                 after_touch["time"]
             )
 
-            print(
-                "당시 고가 :",
-                round(
-                    after_touch[
-                        "running_high"
-                    ],
-                    2
-                )
-            )
-
-            print(
-                "당시 저가 :",
-                round(
-                    after_touch[
-                        "running_low"
-                    ],
-                    2
-                )
-            )
-
-            print(
-                "50선 :",
-                round(
-                    after_touch["fib50"],
-                    2
-                )
-            )
-
-            print(
-                "61.8선 :",
-                round(
-                    after_touch["fib618"],
-                    2
-                )
-            )
-
-            print(
-                "70선 :",
-                round(
-                    after_touch["fib70"],
-                    2
-                )
-            )
-
         else:
 
-            print()
             print(
                 "14:30 이후 50선 터치 : 없음"
             )
 
         print()
         print("=" * 70)
-        print("주요 시점 피보나치")
+        print("주요 시점 고정 피보나치")
         print("=" * 70)
 
         for row in result[
@@ -605,10 +593,6 @@ try:
 
             print(
                 row["time"],
-                "/ 고가",
-                row["running_high"],
-                "/ 저가",
-                row["running_low"],
                 "/ 50",
                 round(row["fib50"], 2),
                 "/ 61.8",
